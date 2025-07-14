@@ -1,6 +1,14 @@
 package com.livetrans.application
 
+import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,8 +33,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.livetrans.application.ui.theme.LiveTransTheme
+import java.util.Locale
 
 
 class TranslateActivity : ComponentActivity() {
@@ -35,7 +47,8 @@ class TranslateActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LiveTransTheme {
-                TranslationScreen()
+                val targetLang = intent.getStringExtra("target_language") ?: "ko"
+                TranslationScreen(targetLang)
             }
         }
     }
@@ -51,12 +64,34 @@ fun TranslationPreView(){
 
 @Composable
 fun TranslationScreen(
+    targetLang: String = "ko",
     onBackClick: () -> Unit = {},
     onPauseClick: () -> Unit = {},
     onSaveClick: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableStateOf("trans") }
+    var originalText by remember { mutableStateOf("") }
     var contents by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val activity = context as? Activity
+
+    // STT 자동 실행을 위한 권한 확인
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                activity!!,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                1
+            )
+        } else {
+            // 권한이 이미 있으면 바로 STT 시작
+            startListening(context) { result ->
+                originalText = result
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -111,7 +146,7 @@ fun TranslationScreen(
                     selected = selectedTab == "org",
                     onClick = {
                         selectedTab = "org"
-                        contents = "Hello!"
+                        contents = originalText
                               },
                     modifier = Modifier.weight(1f)
                 )
@@ -203,6 +238,34 @@ fun ToggleOption(
         )
     }
 }
+
+fun startListening(context: Context, onResult: (String) -> Unit) {
+    val speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+    }
+
+    speechRecognizer.setRecognitionListener(object : RecognitionListener {
+        override fun onResults(results: Bundle?) {
+            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            matches?.let {
+                onResult(it[0])  // 가장 첫 번째 인식 결과 사용
+            }
+        }
+        override fun onReadyForSpeech(params: Bundle?) {}
+        override fun onBeginningOfSpeech() {}
+        override fun onRmsChanged(rmsdB: Float) {}
+        override fun onBufferReceived(buffer: ByteArray?) {}
+        override fun onEndOfSpeech() {}
+        override fun onError(error: Int) {}
+        override fun onPartialResults(partialResults: Bundle?) {}
+        override fun onEvent(eventType: Int, params: Bundle?) {}
+    })
+
+    speechRecognizer.startListening(intent)
+}
+
 
 
 

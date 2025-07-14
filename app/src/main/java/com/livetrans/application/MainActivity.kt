@@ -1,5 +1,6 @@
 package com.livetrans.application
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -42,9 +43,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 
 import com.livetrans.application.ui.theme.LiveTransTheme
 
@@ -63,10 +70,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen() {
     // TODO - DB에서 관리되도록 수정 필요
-    val languages = listOf("English", "Korean", "Japanese", "Chinese", "Spanish")
-//    var sourceLang by remember { mutableStateOf("Korean") }
-    var targetLang by remember { mutableStateOf("English") }
-    var showLanguageDialog by remember { mutableStateOf(false) }
+    val languages = mapOf(
+        "en" to "English",
+        "ko" to "Korean",
+        "ja" to "Japanese",
+        "zh" to "Chinese (Simplified)",
+        )
+    var targetLang by remember { mutableStateOf("en") }
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -76,23 +87,6 @@ fun MainScreen() {
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Column {
-            // 언어 선택
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp, end = 16.dp),
-                contentAlignment = Alignment.TopEnd
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Select Target Language",
-                    tint = Color(0xFF121416),
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clickable{ showLanguageDialog = true }
-                )
-            }
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -135,11 +129,26 @@ fun MainScreen() {
                 textAlign = TextAlign.Center
             )
 
+            // 언어 설정
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
+                LanguageSelector(
+                    label = "Target Language",
+                    selectedLanguage = targetLang,
+                    languageOptions = languages,
+                    onLanguageSelected = { targetLang = it }
+                )
+            }
         }
 
+        // 번역 시작
         Column {
             Button(
-                onClick = { /* TODO: Navigate to main screen */ },
+                onClick = {
+                    val intent = Intent(context, TranslateActivity::class.java).apply {
+                        putExtra("target_language", targetLang)
+                    }
+                    context.startActivity(intent)
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDCE8F3)),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
@@ -155,62 +164,51 @@ fun MainScreen() {
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            TargetLanguageDialog(
-                showDialog = showLanguageDialog,
-                languages = languages,
-                currentLanguage = targetLang,
-                onDismiss = { showLanguageDialog = false },
-                onLanguageSelected = { selected ->
-                    targetLang = selected
-                }
-            )
         }
     }
 }
 
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TargetLanguageDialog(
-    showDialog: Boolean,
-    languages: List<String>,
-    currentLanguage: String,
-    onDismiss: () -> Unit,
+fun LanguageSelector(
+    label: String,
+    selectedLanguage: String,
+    languageOptions: Map<String, String>,
     onLanguageSelected: (String) -> Unit
 ) {
-    if (!showDialog) return
+    var expanded by remember { mutableStateOf(false) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Select Target Language") },
-        text = {
-            Column {
-                languages.forEach { lang ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onLanguageSelected(lang)
-                                onDismiss()
-                            }
-                            .padding(vertical = 8.dp),
-                    ) {
-                        Text(
-                            text = lang,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                        )
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+    ) {
+        OutlinedTextField(
+            value = languageOptions[selectedLanguage] ?: selectedLanguage,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            languageOptions.forEach { (key, language) ->
+                DropdownMenuItem(
+                    text = { Text(language) },
+                    onClick = {
+                        onLanguageSelected(key)
+                        expanded = false
                     }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
+                )
             }
         }
-    )
+    }
 }
+
 
 
 @Preview(showBackground = true)
