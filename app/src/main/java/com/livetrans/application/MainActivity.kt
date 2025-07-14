@@ -71,12 +71,13 @@ class MainActivity : ComponentActivity() {
 fun MainScreen() {
     // TODO - DB에서 관리되도록 수정 필요
     val languages = mapOf(
-        "en" to "English",
-        "ko" to "Korean",
-        "ja" to "Japanese",
-        "zh" to "Chinese (Simplified)",
+        "en-US" to "English",
+        "ko-KR" to "Korean",
+        "ja-JP" to "Japanese",
+        "zh-CN" to "Chinese (Simplified)",
         )
-    var targetLang by remember { mutableStateOf("en") }
+    var originLang by remember { mutableStateOf("ko-KR") }
+    var targetLang by remember { mutableStateOf("en-US") }
     val context = LocalContext.current
 
     Column(
@@ -128,9 +129,21 @@ fun MainScreen() {
                     .fillMaxWidth(),
                 textAlign = TextAlign.Center
             )
+        }
 
-            // 언어 설정
+        // 번역 시작
+        Column(modifier = Modifier.padding(20.dp)) {
+            // 언어 설정(원어-번역)
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
+                // 원어 선택
+                LanguageSelector(
+                    label = "Target Language",
+                    selectedLanguage = originLang,
+                    languageOptions = languages,
+                    onLanguageSelected = { originLang = it }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                // 번역 언어 선택
                 LanguageSelector(
                     label = "Target Language",
                     selectedLanguage = targetLang,
@@ -138,10 +151,7 @@ fun MainScreen() {
                     onLanguageSelected = { targetLang = it }
                 )
             }
-        }
 
-        // 번역 시작
-        Column {
             Button(
                 onClick = {
                     val intent = Intent(context, TranslateActivity::class.java).apply {

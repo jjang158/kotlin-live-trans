@@ -6,9 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -42,38 +45,59 @@ import java.util.Locale
 
 
 class TranslateActivity : ComponentActivity() {
+    private lateinit var speechRecognizer: SpeechRecognizer
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             LiveTransTheme {
                 val targetLang = intent.getStringExtra("target_language") ?: "ko"
-                TranslationScreen(targetLang)
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+                TranslationScreen(
+                    targetLang = targetLang,
+                    speechRecognizer = speechRecognizer,
+                    onBackClick = { finish() }
+                )
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        speechRecognizer.let {
+            Log.d("STT", "SpeechRecognizer destroyed")
+            it.destroy()
         }
     }
 }
 
 @Composable
 @Preview
-fun TranslationPreView(){
+fun TranslationPreView() {
     LiveTransTheme {
-        TranslationScreen()
+//        TranslationScreen()
     }
 }
 
 @Composable
 fun TranslationScreen(
     targetLang: String = "ko",
+    speechRecognizer: SpeechRecognizer,
     onBackClick: () -> Unit = {},
     onPauseClick: () -> Unit = {},
     onSaveClick: () -> Unit = {}
 ) {
-    var selectedTab by remember { mutableStateOf("trans") }
-    var originalText by remember { mutableStateOf("") }
-    var contents by remember { mutableStateOf("") }
     val context = LocalContext.current
     val activity = context as? Activity
+    var selectedTab by remember { mutableStateOf("trans") }
+    var originalText by remember { mutableStateOf("") }
+    val contents by remember(originalText, selectedTab) {
+        mutableStateOf(
+            if (selectedTab == "org") originalText
+            else "안녕하세요!"
+        )
+    }
 
     // STT 자동 실행을 위한 권한 확인
     LaunchedEffect(Unit) {
@@ -86,10 +110,15 @@ fun TranslationScreen(
                 1
             )
         } else {
-            // 권한이 이미 있으면 바로 STT 시작
-            startListening(context) { result ->
-                originalText = result
-            }
+            Handler(Looper.getMainLooper()).postDelayed({
+                startListening(
+                    context = context,
+                    speechRecognizer = speechRecognizer,
+                    language = targetLang,
+                    onResult = { result ->
+                        originalText += result
+                    })
+            }, 500)
         }
     }
 
@@ -146,8 +175,7 @@ fun TranslationScreen(
                     selected = selectedTab == "org",
                     onClick = {
                         selectedTab = "org"
-                        contents = originalText
-                              },
+                    },
                     modifier = Modifier.weight(1f)
                 )
                 ToggleOption(
@@ -155,8 +183,7 @@ fun TranslationScreen(
                     selected = selectedTab == "trans",
                     onClick = {
                         selectedTab = "trans"
-                        contents = "안녕하세요!"
-                              },
+                    },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -188,7 +215,12 @@ fun TranslationScreen(
                     .weight(1f)
                     .height(40.dp)
             ) {
-                Text("Pause", color = Color(0xFF121416), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "Pause",
+                    color = Color(0xFF121416),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -201,7 +233,12 @@ fun TranslationScreen(
                     .weight(1f)
                     .height(40.dp)
             ) {
-                Text("Save", color = Color(0xFF121416), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "Save",
+                    color = Color(0xFF121416),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
 
@@ -239,33 +276,62 @@ fun ToggleOption(
     }
 }
 
-fun startListening(context: Context, onResult: (String) -> Unit) {
-    val speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+fun startListening(
+    context: Context,
+    speechRecognizer: SpeechRecognizer,
+    onResult: (String) -> Unit,
+    language: String
+) {
     val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+        // 완전히 조용한 상태로 인식 종료까지 기다리는 시간
+        putExtra("android.speech.extra.SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS", 100000)
+        // 어느 정도 조용할 때 종료까지 기다리는 시간
+        putExtra("android.speech.extra.SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS", 100000)
+        // 최소 음성 인식 유지 시간
+        putExtra("android.speech.extra.SPEECH_INPUT_MINIMUM_LENGTH_MILLIS", 500000)
     }
 
+    Log.d("STT", "startListening start!! $language")
+
     speechRecognizer.setRecognitionListener(object : RecognitionListener {
-        override fun onResults(results: Bundle?) {
-            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-            matches?.let {
-                onResult(it[0])  // 가장 첫 번째 인식 결과 사용
-            }
+        override fun onReadyForSpeech(params: Bundle?) {
+            Log.d("STT", "onReadyForSpeech")
         }
-        override fun onReadyForSpeech(params: Bundle?) {}
-        override fun onBeginningOfSpeech() {}
+
+        override fun onBeginningOfSpeech() {
+            Log.d("STT", "onBeginningOfSpeech")
+        }
+
         override fun onRmsChanged(rmsdB: Float) {}
         override fun onBufferReceived(buffer: ByteArray?) {}
-        override fun onEndOfSpeech() {}
-        override fun onError(error: Int) {}
+        override fun onEndOfSpeech() {
+            Log.d("STT", "onEndOfSpeech")
+            Handler(Looper.getMainLooper()).postDelayed({
+                speechRecognizer.startListening(intent)
+            }, 1000)
+        }
+
+        override fun onError(error: Int) {
+            Log.e("STT", "SpeechRecognizer error: $error")
+        }
+
+        override fun onResults(results: Bundle?) {
+            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            Log.d("STT", "onResults start!!")
+            matches?.let {
+                onResult(it[0])
+                Log.d("STT", "Result: ${it.firstOrNull()}")
+            }
+        }
+
         override fun onPartialResults(partialResults: Bundle?) {}
         override fun onEvent(eventType: Int, params: Bundle?) {}
     })
 
     speechRecognizer.startListening(intent)
 }
-
 
 
 
