@@ -2,7 +2,6 @@ package com.livetrans.application
 
 import android.Manifest
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -53,10 +52,12 @@ class TranslateActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        val originLang = intent.getStringExtra("origin_language") ?: "ko-KR"
+        val targetLang = intent.getStringExtra("target_language") ?: "en-US"
+
         setContent {
             LiveTransTheme {
-                val originLang = intent.getStringExtra("origin_language") ?: "ko-KR"
-                val targetLang = intent.getStringExtra("target_language") ?: "en-US"
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
                 TranslationScreen(
                     originLang = originLang,
@@ -116,6 +117,8 @@ fun TranslationScreen(
 
     // STT 자동 실행을 위한 권한 확인
     LaunchedEffect(Unit) {
+
+//        PermissionUtil.checkAudio()
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -127,7 +130,6 @@ fun TranslationScreen(
         } else {
             Handler(Looper.getMainLooper()).postDelayed({
                 startListening(
-                    context = context,
                     speechRecognizer = speechRecognizer,
                     language = originLang,
                     onResult = { result ->
@@ -335,14 +337,12 @@ fun ToggleOption(
 
 /**
 * STT 구현체
-* @param context
 * @param speechRecognizer
 * @param onResult
 * @param language
 * @return Unit
 * */
 fun startListening(
-    context: Context,
     speechRecognizer: SpeechRecognizer,
     onResult: (String) -> Unit,
     language: String
