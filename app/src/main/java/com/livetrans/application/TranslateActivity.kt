@@ -40,8 +40,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.TranslatorOptions
 import com.livetrans.application.ui.theme.LiveTransTheme
-import java.util.Locale
 
 
 class TranslateActivity : ComponentActivity() {
@@ -52,9 +55,11 @@ class TranslateActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LiveTransTheme {
-                val targetLang = intent.getStringExtra("target_language") ?: "ko"
+                val originLang = intent.getStringExtra("origin_language") ?: "ko-KR"
+                val targetLang = intent.getStringExtra("target_language") ?: "en-US"
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
                 TranslationScreen(
+                    originLang = originLang,
                     targetLang = targetLang,
                     speechRecognizer = speechRecognizer,
                     onBackClick = { finish() }
@@ -82,7 +87,8 @@ fun TranslationPreView() {
 
 @Composable
 fun TranslationScreen(
-    targetLang: String = "ko",
+    originLang: String,
+    targetLang: String,
     speechRecognizer: SpeechRecognizer,
     onBackClick: () -> Unit = {},
     onPauseClick: () -> Unit = {},
@@ -90,13 +96,22 @@ fun TranslationScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
-    var selectedTab by remember { mutableStateOf("trans") }
-    var originalText by remember { mutableStateOf("") }
-    val contents by remember(originalText, selectedTab) {
+    var selectedTab = remember { mutableStateOf("trans") }
+    var originText by remember { mutableStateOf("") }
+    var transText by remember { mutableStateOf("") }
+    val contents by remember(originText, transText, selectedTab) {
         mutableStateOf(
-            if (selectedTab == "org") originalText
-            else "안녕하세요!"
+            if (selectedTab.value == "org") originText
+            else transText
         )
+    }
+
+    val translator = remember {
+        val options = TranslatorOptions.Builder()
+            .setSourceLanguage(TranslateLanguage.fromLanguageTag(originLang) ?: TranslateLanguage.KOREAN)
+            .setTargetLanguage(TranslateLanguage.fromLanguageTag(targetLang) ?: TranslateLanguage.ENGLISH)
+            .build()
+        Translation.getClient(options)
     }
 
     // STT 자동 실행을 위한 권한 확인
@@ -114,14 +129,48 @@ fun TranslationScreen(
                 startListening(
                     context = context,
                     speechRecognizer = speechRecognizer,
-                    language = targetLang,
+                    language = originLang,
                     onResult = { result ->
-                        originalText += result
+                        originText += result
+
+                        val conditions = DownloadConditions.Builder().build()
+                        translator.downloadModelIfNeeded(conditions)
+                            .addOnSuccessListener {
+                                translator.translate(result)
+                                    .addOnSuccessListener { translatedResult ->
+                                        transText += translatedResult
+                                    }
+                                    .addOnFailureListener { e ->
+                                        Log.e("Translation", "Translation failed: ${e.message}")
+                                    }
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("Translation", "Translation Listener Error: ${e.message}")
+                            }
                     })
             }, 500)
         }
     }
 
+    DrawTransScreen(selectedTab, contents, onBackClick, onPauseClick, onSaveClick)
+}
+
+/**
+* 실시간번역 화면
+* @param selectedTab
+* @param contents
+* @param onBackClick
+* @param onPauseClick
+* @param onSaveClick
+* */
+@Composable
+fun DrawTransScreen(
+    selectedTab: MutableState<String>,
+    contents: String,
+    onBackClick: () -> Unit = {},
+    onPauseClick: () -> Unit = {},
+    onSaveClick: () -> Unit = {}
+){
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -172,17 +221,17 @@ fun TranslationScreen(
             ) {
                 ToggleOption(
                     text = "Original Text",
-                    selected = selectedTab == "org",
+                    selected = selectedTab.value == "org",
                     onClick = {
-                        selectedTab = "org"
+                        selectedTab.value = "org"
                     },
                     modifier = Modifier.weight(1f)
                 )
                 ToggleOption(
                     text = "Translated Text",
-                    selected = selectedTab == "trans",
+                    selected = selectedTab.value == "trans",
                     onClick = {
-                        selectedTab = "trans"
+                        selectedTab.value = "trans"
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -246,6 +295,14 @@ fun TranslationScreen(
     }
 }
 
+/**
+* 언어 선택 토글 (원어/번역)
+* @param text
+* @param selected
+* @param onClick
+* @param modifier
+* @return Unit
+* */
 @Composable
 fun ToggleOption(
     text: String,
@@ -276,6 +333,14 @@ fun ToggleOption(
     }
 }
 
+/**
+* STT 구현체
+* @param context
+* @param speechRecognizer
+* @param onResult
+* @param language
+* @return Unit
+* */
 fun startListening(
     context: Context,
     speechRecognizer: SpeechRecognizer,
@@ -332,6 +397,5 @@ fun startListening(
 
     speechRecognizer.startListening(intent)
 }
-
 
 

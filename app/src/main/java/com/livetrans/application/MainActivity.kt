@@ -155,6 +155,7 @@ fun MainScreen() {
             Button(
                 onClick = {
                     val intent = Intent(context, TranslateActivity::class.java).apply {
+                        putExtra("origin_language", originLang)
                         putExtra("target_language", targetLang)
                     }
                     context.startActivity(intent)
