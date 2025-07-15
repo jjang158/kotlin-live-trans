@@ -58,7 +58,6 @@ import com.livetrans.application.ui.theme.LiveTransTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             LiveTransTheme {
                 MainScreen()
@@ -178,7 +177,9 @@ fun MainScreen() {
         }
     }
 }
-
+/**
+* Dropdown
+* */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LanguageSelector(
